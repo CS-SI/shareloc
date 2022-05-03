@@ -20,7 +20,7 @@
 #
 """
 This module contains the RPC class corresponding to the RPC models.
-RPC models covered are : DIMAP V1, DIMAP V2, ossim (geom file), geotiff.
+RPC models covered are : DIMAP V1, DIMAP V2, DIMAP V3, ossim (geom file), geotiff.
 """
 # pylint: disable=no-member
 
@@ -255,16 +255,16 @@ class RPC:
             if float(dimap_version) < 2.0:
                 return cls.from_dimap_v1(dimap_filepath, topleftconvention)
             if float(dimap_version) >= 2.0:
-                return cls.from_dimap_v2(dimap_filepath, topleftconvention)
+                return cls.read_dimap_coeff(dimap_filepath, topleftconvention)
         else:
             raise ValueError("can''t read dimap file")
 
         return None
 
     @classmethod
-    def from_dimap_v2(cls, dimap_filepath, topleftconvention=True):
+    def read_dimap_coeff(cls, dimap_filepath, topleftconvention=True):
         """
-        Load from Dimap v2
+        Load from Dimap v2 and v3
 
         :param dimap_filepath  : dimap xml file
         :type dimap_filepath  : str
@@ -284,24 +284,48 @@ class RPC:
         version = mtd[0].getElementsByTagName("METADATA_FORMAT")[0].attributes.items()[0][1]
         rpc_params["driver_type"] = "dimap_v" + version
         global_rfm = xmldoc.getElementsByTagName("Global_RFM")[0]
-        direct_coeffs = global_rfm.getElementsByTagName("Direct_Model")[0]
-        rpc_params["num_x"] = [
-            float(direct_coeffs.getElementsByTagName(f"SAMP_NUM_COEFF_{index}")[0].firstChild.data)
-            for index in range(1, 21)
-        ]
-        rpc_params["den_x"] = [
-            float(direct_coeffs.getElementsByTagName(f"SAMP_DEN_COEFF_{index}")[0].firstChild.data)
-            for index in range(1, 21)
-        ]
-        rpc_params["num_y"] = [
-            float(direct_coeffs.getElementsByTagName(f"LINE_NUM_COEFF_{index}")[0].firstChild.data)
-            for index in range(1, 21)
-        ]
-        rpc_params["den_y"] = [
-            float(direct_coeffs.getElementsByTagName(f"LINE_DEN_COEFF_{index}")[0].firstChild.data)
-            for index in range(1, 21)
-        ]
-        inverse_coeffs = global_rfm.getElementsByTagName("Inverse_Model")[0]
+        if float(version) >= 3:
+            direct_coeffs = global_rfm.getElementsByTagName("ImagetoGround_Values")[0]
+            inverse_coeffs = global_rfm.getElementsByTagName("GroundtoImage_Values")[0]
+
+            rpc_params["num_x"] = [
+                float(direct_coeffs.getElementsByTagName(f"LON_NUM_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["den_x"] = [
+                float(direct_coeffs.getElementsByTagName(f"LON_DEN_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["num_y"] = [
+                float(direct_coeffs.getElementsByTagName(f"LAT_NUM_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["den_y"] = [
+                float(direct_coeffs.getElementsByTagName(f"LAT_DEN_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+
+        else:
+            direct_coeffs = global_rfm.getElementsByTagName("Direct_Model")[0]
+            inverse_coeffs = global_rfm.getElementsByTagName("Inverse_Model")[0]
+
+            rpc_params["num_x"] = [
+                float(direct_coeffs.getElementsByTagName(f"SAMP_NUM_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["den_x"] = [
+                float(direct_coeffs.getElementsByTagName(f"SAMP_DEN_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["num_y"] = [
+                float(direct_coeffs.getElementsByTagName(f"LINE_NUM_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+            rpc_params["den_y"] = [
+                float(direct_coeffs.getElementsByTagName(f"LINE_DEN_COEFF_{index}")[0].firstChild.data)
+                for index in range(1, 21)
+            ]
+
         rpc_params["num_col"] = [
             float(inverse_coeffs.getElementsByTagName(f"SAMP_NUM_COEFF_{index}")[0].firstChild.data)
             for index in range(1, 21)
@@ -329,8 +353,10 @@ class RPC:
         rpc_params["scale_x"] = float(normalisation_coeffs.getElementsByTagName("LONG_SCALE")[0].firstChild.data)
         rpc_params["offset_y"] = float(normalisation_coeffs.getElementsByTagName("LAT_OFF")[0].firstChild.data)
         rpc_params["scale_y"] = float(normalisation_coeffs.getElementsByTagName("LAT_SCALE")[0].firstChild.data)
-        rpc_params["offset_col"] -= 1.0
-        rpc_params["offset_row"] -= 1.0
+        if float(version) < 3:
+            rpc_params["offset_col"] -= 1.0
+            rpc_params["offset_row"] -= 1.0
+
         # If top left convention, 0.5 pixel shift added on col/row offsets
         if topleftconvention:
             rpc_params["offset_col"] += 0.5
@@ -526,7 +552,7 @@ class RPC:
                 if float(dimap_version) < 2.0:
                     return cls.from_dimap_v1(primary_file, topleftconvention)
                 if float(dimap_version) >= 2.0:
-                    return cls.from_dimap_v2(primary_file, topleftconvention)
+                    return cls.read_dimap_coeff(primary_file, topleftconvention)
         ossim_model = identify_ossim_kwl(primary_file)
         if ossim_model is not None:
             return cls.from_ossim_kwl(primary_file, topleftconvention)
